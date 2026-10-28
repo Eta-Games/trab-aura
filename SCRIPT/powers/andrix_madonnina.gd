@@ -22,6 +22,7 @@ var _poison_tick_left: float = 0.0
 var _poison_duration: float = 0.0
 var _poison_elapsed: float = 0.0
 var _poison_expand_duration: float = 0.45
+var _poison_hold_duration: float = 0.0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -37,10 +38,12 @@ func default_params() -> Dictionary:
 		"self_poison_duration": 6.5,
 		"self_poison_radius": 128.0,
 		"poison_expand_duration": 0.5,
+		"poison_hold_duration": 4.0,
 		"poison_tick_interval": 0.5,
 		"poison_damage": 3,
-		"poison_radius": 96.0,
-		"poison_particle_amount": 28,
+		"poison_aura_drain": 30.0,
+		"poison_radius": 150.0,
+		"poison_particle_amount": 48,
 		"impact_knife_count": 12,
 		"knife_effect_time": 1.0,
 		"madonna_stamina_min": 100.0,
@@ -268,6 +271,7 @@ func _throw_impact_rose() -> void:
 
 
 func _spawn_poison_cloud(duration: float = -1.0, radius: float = -1.0) -> void:
+	var is_self_poison: bool = duration > 0.0
 	if duration <= 0.0:
 		duration = float(params["poison_duration"])
 	if radius <= 0.0:
@@ -318,6 +322,7 @@ func _spawn_poison_cloud(duration: float = -1.0, radius: float = -1.0) -> void:
 	_poison_duration = duration
 	_poison_elapsed = 0.0
 	_poison_expand_duration = minf(float(params["poison_expand_duration"]), duration * 0.5)
+	_poison_hold_duration = 0.0 if is_self_poison else float(params["poison_hold_duration"])
 	_poison_tick_left = float(params["poison_tick_interval"])
 
 
@@ -340,9 +345,11 @@ func _update_poison(delta: float) -> void:
 	if _poison_elapsed < _poison_expand_duration:
 		var expand: float = _poison_elapsed / maxf(_poison_expand_duration, 0.001)
 		cloud_scale = lerpf(0.06, 1.0, _smooth_progress(expand))
+	elif _poison_elapsed < _poison_expand_duration + _poison_hold_duration:
+		cloud_scale = 1.0
 	else:
-		var shrink_duration: float = maxf(_poison_duration - _poison_expand_duration, 0.001)
-		var shrink: float = (_poison_elapsed - _poison_expand_duration) / shrink_duration
+		var shrink_duration: float = maxf(_poison_duration - _poison_expand_duration - _poison_hold_duration, 0.001)
+		var shrink: float = (_poison_elapsed - _poison_expand_duration - _poison_hold_duration) / shrink_duration
 		cloud_scale = lerpf(1.0, 0.06, _smooth_progress(shrink))
 	if is_instance_valid(_poison_cloud):
 		_poison_cloud.scale = Vector2.ONE * cloud_scale
@@ -351,7 +358,10 @@ func _update_poison(delta: float) -> void:
 		_poison_tick_left = float(params["poison_tick_interval"])
 		for area in _poison_area.get_overlapping_areas():
 			if area is Hurtbox and area != player.hurtbox:
-				area.take_damage(int(params["poison_damage"]), player)
+				var victim := area.get_parent() as Player
+				if victim == null:
+					continue
+				victim.apply_poison_damage(int(params["poison_damage"]), player, float(params["poison_aura_drain"]))
 	if _poison_left == 0.0:
 		if is_instance_valid(_poison_cloud):
 			_poison_cloud.queue_free()

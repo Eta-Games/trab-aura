@@ -84,6 +84,7 @@ var frozen_time_left: float = 0.0  # secondi di immobilita' forzata da un potere
 var hitbox_delay_left: float = 0.0  # secondi che mancano all'attivazione della hitbox
 var hurt_stun_left: float = 0.0  # secondi di stordimento rimanenti dopo un colpo subito
 var is_blocking: bool = false  # true mentre il player tiene premuto il tasto "secondary"
+var _suppress_next_hit_knockback: bool = false
 
 # --- NUOVO: multiplayer online (vedi network_manager.gd) ---
 var is_networked: bool = false  # true se la partita gira online (deciso da solo in _enter_tree)
@@ -536,6 +537,15 @@ func gain_stamina(amount: float) -> void:
 
 func spend_stamina(amount: float) -> void:
 	gain_stamina(-amount)
+
+
+func apply_poison_damage(amount: int, source: Node, aura_drain: float = 0.0) -> void:
+	# Il veleno infligge danno senza spinta e prosciuga aura al primo tick.
+	_suppress_next_hit_knockback = true
+	hurtbox.take_damage(amount, source)
+	_suppress_next_hit_knockback = false
+	if aura_drain > 0.0:
+		gain_stamina(-aura_drain)
 
 
 func freeze_for(seconds: float) -> void:
@@ -1146,7 +1156,7 @@ func _on_damaged(amount: int, source: Node) -> void:
 func _play_hit_feedback(source: Node, blocked: bool) -> void:
 	# direzione della spinta = lontano da chi ha colpito
 	var push_dir: float = 1.0 if current_sprite.flip_h else -1.0
-	if source is Node2D:
+	if source is Node2D and not _suppress_next_hit_knockback:
 		var d: float = signf(global_position.x - source.global_position.x)
 		if d != 0.0:
 			push_dir = d
