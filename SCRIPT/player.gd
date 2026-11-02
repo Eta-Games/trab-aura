@@ -91,6 +91,7 @@ var is_networked: bool = false  # true se la partita gira online (deciso da solo
 var is_local: bool = true       # true se questo Player è quello di QUESTO PC (rilevante solo se is_networked)
 var synced_animation: String = "idle"  # replicata al client per mostrare l'animazione giusta
 var synced_flip_h: bool = false        # replicato al client per il verso giusto
+var synced_power_effect: String = ""    # effetto secondario temporaneo da mostrare sul client
 # ultimo stato tasti ricevuto dal PC remoto (letto dall'host per simulare il player non suo)
 var _remote_input: Dictionary = {"dir": 0.0, "run": false, "jump": false, "attack": false, "block": false, "secondary": false, "reload": false}
 
@@ -198,6 +199,7 @@ func _setup_networking() -> void:
 	config.add_property(NodePath(".:current_stamina"))
 	config.add_property(NodePath(".:synced_animation"))
 	config.add_property(NodePath(".:synced_flip_h"))
+	config.add_property(NodePath(".:synced_power_effect"))
 
 	var sync := MultiplayerSynchronizer.new()
 	sync.name = "MultiplayerSynchronizer"
@@ -216,6 +218,8 @@ func _process(_delta: float) -> void:
 			and current_sprite.sprite_frames.has_animation(synced_animation):
 		current_sprite.play(synced_animation)
 	current_sprite.flip_h = synced_flip_h
+	if secondary_power != null:
+		secondary_power.sync_remote_visual(synced_power_effect)
 	if chain_sprite != null:
 		chain_sprite.flip_h = synced_flip_h
 
@@ -503,8 +507,8 @@ func _setup_secondary_power() -> void:
 				params[key] = cfg.get_value("secondary", key)
 			else:
 				push_warning("[%s] secondary: chiave sconosciuta '%s' (settings di %s: %s)" % [fighter_name, key, script_path.get_file(), ", ".join(defaults.keys())])
-	# Il tempo di ricarica delle secondarie e' comune a tutti i personaggi.
-	params["cooldown"] = 5.0
+	# Il cooldown usa il valore specifico del personaggio, oppure il default
+	# dichiarato dal potere: i personaggi possono avere ricariche diverse.
 
 	if OS.is_debug_build() and not _power_hint_shown.has(fighter_name):
 		_power_hint_shown[fighter_name] = true

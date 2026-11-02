@@ -119,6 +119,12 @@ func _update_power(_delta: float) -> void:
 	pass
 
 
+# I poteri con un effetto temporaneo possono mostrarlo sul client remoto usando
+# lo stato replicato dal Player; gli altri non hanno effetti aggiuntivi.
+func sync_remote_visual(_effect: String) -> void:
+	pass
+
+
 func _physics_process(delta: float) -> void:
 	cooldown_left = maxf(cooldown_left - delta, 0.0)
 	_update_power(delta)

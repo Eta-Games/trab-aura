@@ -2,6 +2,7 @@ extends Node
 
 @onready var fine_partita = $FinePartita
 @onready var label_timer: Label = $HUD/PannelloTimer/LabelTimer
+@onready var pause_menu: CanvasLayer = $PauseMenu
 
 const TEMPO_ROUND: float = 300.0
 
@@ -29,6 +30,19 @@ func _ready() -> void:
 		p.velocity = Vector2.ZERO
 	_setup_ambient_effects()
 	call_deferred("_play_fight_intro")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if partita_finita or _intro_running:
+		return
+	var pause_pressed: bool = false
+	if event is InputEventKey:
+		pause_pressed = event.pressed and not event.echo and event.keycode == KEY_ESCAPE
+	elif event is InputEventJoypadButton:
+		pause_pressed = event.pressed and event.button_index == JOY_BUTTON_START
+	if pause_pressed:
+		pause_menu.call("open_menu")
+		get_viewport().set_input_as_handled()
 
 
 # Tiene solo background/tilemap della mappa scelta (definite in data/mappe.cfg)

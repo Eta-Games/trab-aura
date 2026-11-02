@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://gupe7veoh058" path="res://SCRIPT/stamina_bar.gd" id="9_staminabar"]
 [ext_resource type="Script" path="res://SCRIPT/cooldown_bar.gd" id="11_cooldownbar"]
 [ext_resource type="FontFile" uid="uid://fwsspbqoxsdm" path="res://font/kreaturekombatcond.ttf" id="10_font"]
+[ext_resource type="Script" path="res://SCRIPT/pause_menu.gd" id="12_pausemenu"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_i2t4f"]
 texture = ExtResource("3_km5ld")
@@ -11911,3 +11912,7 @@ script = ExtResource("11_cooldownbar")
 player_id = 1
 
 [node name="FinePartita" parent="." unique_id=348708548 instance=ExtResource("7_km5ld")]
+
+[node name="PauseMenu" type="CanvasLayer" parent="."]
+layer = 20
+script = ExtResource("12_pausemenu")

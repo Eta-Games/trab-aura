@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://bgg5o5d1c1iya" path="res://SCRIPT/pannello_selezione_controlli.gd" id="11_ctrl"]
 [ext_resource type="Script" uid="uid://dcutgy4hnd7wl" path="res://SCRIPT/selettore_mappa.gd" id="12_map"]
 [ext_resource type="Texture2D" uid="uid://ee0f27to8713" path="res://sprite/Player/proppick/mencu_icon.png" id="13_mencu"]
+[ext_resource type="Texture2D" uid="uid://bs3d74kxjpoi1" path="res://sprite/Player/proppick/perucx_icon.png" id="15_perucx_icon"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
 bg_color = Color(0.65098, 0.098039, 0.117647, 0.85)
@@ -340,8 +341,8 @@ text = "Schermo intero"
 
 [node name="LabelVideoHint" type="Label" parent="Impostazioni/Pannello/Contenitore" unique_id=178201313]
 layout_mode = 2
-autowrap_mode = 2
 text = "Risoluzione e schermo intero si applicano avviando il gioco fuori dall'editor."
+autowrap_mode = 2
 
 [node name="RigaRisoluzione" type="HBoxContainer" parent="Impostazioni/Pannello/Contenitore" unique_id=178201303]
 layout_mode = 2
@@ -376,16 +377,17 @@ text = "Ripristina tasti predefiniti"
 
 [node name="ScrollTasti" type="ScrollContainer" parent="Impostazioni/Pannello/Contenitore" unique_id=178201309]
 custom_minimum_size = Vector2(0, 205)
-size_flags_vertical = 3
 layout_mode = 2
+size_flags_vertical = 3
 
 [node name="ElencoTasti" type="VBoxContainer" parent="Impostazioni/Pannello/Contenitore/ScrollTasti" unique_id=178201310]
+layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="LabelController" type="Label" parent="Impostazioni/Pannello/Contenitore" unique_id=178201311]
 layout_mode = 2
-autowrap_mode = 2
 text = "Controller: A salta, X/R1 attacca, B potere/blocco, L1 corre, Y ricarica"
+autowrap_mode = 2
 
 [node name="Indietro" type="Button" parent="Impostazioni/Pannello/Contenitore" unique_id=802987556]
 custom_minimum_size = Vector2(0, 48)
@@ -488,6 +490,22 @@ focus_mode = 0
 flat = true
 script = ExtResource("7_1yirc")
 skin_id = 4
+
+[node name="PerucxSprite" type="Sprite2D" parent="SelezionePersonaggio" unique_id=1031860637]
+z_index = -1
+position = Vector2(541, 485)
+scale = Vector2(0.14673045, 0.1483254)
+texture = ExtResource("15_perucx_icon")
+
+[node name="perucx" type="Button" parent="SelezionePersonaggio" unique_id=460384970]
+offset_left = 456.0
+offset_top = 401.0
+offset_right = 632.0
+offset_bottom = 573.0
+focus_mode = 0
+flat = true
+script = ExtResource("7_1yirc")
+skin_id = 5
 
 [node name="Label" type="Label" parent="SelezionePersonaggio" unique_id=1108000319]
 offset_left = 268.0
