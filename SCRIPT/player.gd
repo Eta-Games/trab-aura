@@ -507,8 +507,8 @@ func _setup_secondary_power() -> void:
 				params[key] = cfg.get_value("secondary", key)
 			else:
 				push_warning("[%s] secondary: chiave sconosciuta '%s' (settings di %s: %s)" % [fighter_name, key, script_path.get_file(), ", ".join(defaults.keys())])
-	# Il cooldown usa il valore specifico del personaggio, oppure il default
-	# dichiarato dal potere: i personaggi possono avere ricariche diverse.
+	# Tutte le mosse secondarie hanno la stessa ricarica di cinque secondi.
+	params["cooldown"] = 5.0
 
 	if OS.is_debug_build() and not _power_hint_shown.has(fighter_name):
 		_power_hint_shown[fighter_name] = true
