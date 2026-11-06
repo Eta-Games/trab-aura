@@ -454,7 +454,7 @@ func _load_stats() -> void:
 	block_damage_reduction = clampf(float(_stat("stats", "block_damage_reduction", block_damage_reduction)), 0.0, 1.0)
 
 	max_stamina = float(_stat("stats", "max_stamina", max_stamina))
-	current_stamina = max_stamina
+	current_stamina = clampf(float(_stat("stats", "starting_stamina", max_stamina)), 0.0, max_stamina)
 	stamina_reload_rate = float(_stat("stats", "stamina_reload_rate", stamina_reload_rate))
 	stamina_hit_gain = float(_stat("stats", "stamina_hit_gain", stamina_hit_gain))
 
