@@ -144,9 +144,12 @@ func _apply_key_bindings() -> void:
 # Configurazione multiplayer: una entry per player, letta da player.gd tramite player_id
 # device_id: -1 = tastiera P1, -2 = tastiera P2, >=0 = indice pad
 var player_configs: Array = [
-	{"skin": 0, "device_id": -1},  # player 1: default trab, tastiera schema 1
-	{"skin": 1, "device_id": -2},  # player 2: default iacopo, tastiera schema 2
+	{"skin": 0, "device_id": -1, "is_bot": false},  # player 1: default trab, tastiera schema 1
+	{"skin": 1, "device_id": -2, "is_bot": false},  # player 2: default iacopo, tastiera schema 2
 ]
+
+var bot_enabled: bool = false
+var bot_player_uses_pad: bool = false
 
 # Mantenuta solo come fallback in player.gd (non viene più scritta dai pulsanti)
 var selected_skin: int = 0
@@ -183,15 +186,21 @@ func get_device_for(player_id: int) -> int:
 	return -1
 
 
-func set_player_config(player_id: int, skin: int, device_id: int) -> void:
+func is_bot_for(player_id: int) -> bool:
+	return player_id < player_configs.size() and bool(player_configs[player_id].get("is_bot", false))
+
+
+func set_player_config(player_id: int, skin: int, device_id: int, is_bot: bool = false) -> void:
 	while player_configs.size() <= player_id:
-		player_configs.append({"skin": 0, "device_id": -1})
-	player_configs[player_id] = {"skin": skin, "device_id": device_id}
+		player_configs.append({"skin": 0, "device_id": -1, "is_bot": false})
+	player_configs[player_id] = {"skin": skin, "device_id": device_id, "is_bot": is_bot}
 
 
 # Da chiamare quando si entra nella schermata di selezione
 func start_selection() -> void:
 	reset_match()
+	for i in range(player_configs.size()):
+		player_configs[i]["is_bot"] = false
 	selecting_player = 0
 	selection_changed.emit()
 
@@ -199,6 +208,14 @@ func start_selection() -> void:
 # Chiamata dai pulsanti: assegna la skin al player di turno, poi passa al successivo
 func choose_skin(skin: int) -> void:
 	set_player_config(selecting_player, skin, get_device_for(selecting_player))
+	if bot_enabled and selecting_player == 0:
+		var available_skins: Array[int] = [0, 1, 2, 3, 4, 5]
+		available_skins.erase(skin)
+		var bot_skin: int = available_skins.pick_random()
+		set_player_config(1, bot_skin, -2, true)
+		selecting_player = PLAYER_COUNT
+		selection_finished.emit()
+		return
 	selecting_player += 1
 	if selecting_player >= PLAYER_COUNT:
 		selection_finished.emit()

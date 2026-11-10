@@ -89,11 +89,28 @@ var _suppress_next_hit_knockback: bool = false
 # --- NUOVO: multiplayer online (vedi network_manager.gd) ---
 var is_networked: bool = false  # true se la partita gira online (deciso da solo in _enter_tree)
 var is_local: bool = true       # true se questo Player è quello di QUESTO PC (rilevante solo se is_networked)
+var is_bot: bool = false
 var synced_animation: String = "idle"  # replicata al client per mostrare l'animazione giusta
 var synced_flip_h: bool = false        # replicato al client per il verso giusto
 var synced_power_effect: String = ""    # effetto secondario temporaneo da mostrare sul client
 # ultimo stato tasti ricevuto dal PC remoto (letto dall'host per simulare il player non suo)
 var _remote_input: Dictionary = {"dir": 0.0, "run": false, "jump": false, "attack": false, "block": false, "secondary": false, "reload": false}
+var _bot_input: Dictionary = {"dir": 0.0, "run": false, "jump": false, "attack": false, "block": false, "secondary": false, "reload": false}
+var _bot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _bot_think_left: float = 0.0
+var _bot_attack_left: float = 0.0
+var _bot_jump_left: float = 0.0
+var _bot_hit_reaction_left: float = 0.0
+var _bot_charge_left: float = 0.0
+var _bot_charge_active: bool = false
+var _bot_charge_hold_limit: float = 0.05
+var _bot_charge_extra_hold: float = 0.0
+var _bot_evade_direction: float = 0.0
+var _bot_last_target_position: Vector2 = Vector2.ZERO
+var _bot_has_target_sample: bool = false
+var _bot_last_opponent_power_cooldown: float = -1.0
+var _bot_opponent_power_was_busy: bool = false
+var _bot_target: Player
 
 # --- NUOVO: attacco caricato del potere secondario (vedi fighter_power.has_charged_attack) ---
 var _secondary_hold_time: float = 0.0  # da quanto e' tenuto premuto "secondary"
@@ -171,6 +188,8 @@ func _enter_tree() -> void:
 		skin = GameState.get_skin_for(player_id)
 	else:
 		skin = GameState.selected_skin  # fallback compatibile col vecchio sistema
+	is_bot = GameState.has_method("is_bot_for") and GameState.is_bot_for(player_id)
+	_bot_rng.randomize()
 
 	_load_fighters()
 	if _skins.is_empty():
@@ -674,6 +693,8 @@ func _set_facing(left: bool) -> void:
 # sua. Il player non locale (quello dell'altro PC, simulato dall'host) legge
 # invece l'ultimo stato ricevuto via RPC (_remote_input).
 func _get_direction() -> float:
+	if is_bot:
+		return float(_bot_input.get("dir", 0.0))
 	if is_networked:
 		return Input.get_axis("p1_left", "p1_right") if is_local else float(_remote_input.get("dir", 0.0))
 	match device_id:
@@ -699,6 +720,8 @@ func _get_direction() -> float:
 
 
 func _jump_just_pressed() -> bool:
+	if is_bot:
+		return _bot_consume("jump")
 	if is_networked:
 		return Input.is_action_just_pressed("p1_jump") if is_local else _remote_consume("jump")
 	match device_id:
@@ -711,6 +734,8 @@ func _jump_just_pressed() -> bool:
 
 
 func _attack_just_pressed() -> bool:
+	if is_bot:
+		return _bot_consume("attack")
 	if is_networked:
 		return Input.is_action_just_pressed("p1_attack") if is_local else _remote_consume("attack")
 	match device_id:
@@ -731,6 +756,8 @@ func _attack_just_pressed() -> bool:
 # p2_secondary): usata per lanciare il potere secondario, a
 # differenza di _block_pressed() che invece lo legge "tenuto premuto"
 func _secondary_just_pressed() -> bool:
+	if is_bot:
+		return _bot_consume("secondary")
 	if is_networked:
 		return Input.is_action_just_pressed("p1_secondary") if is_local else _remote_consume("secondary")
 	match device_id:
@@ -745,6 +772,8 @@ func _secondary_just_pressed() -> bool:
 # ricarica stamina: tenere premuto E (P1/rete), Invio numerico (P2) o Triangolo
 # (JOY_BUTTON_Y) sul pad.
 func _reload_pressed() -> bool:
+	if is_bot:
+		return bool(_bot_input.get("reload", false))
 	if is_networked:
 		return (Input.is_action_pressed("p1_reload") or _any_pad_triangle()) if is_local else bool(_remote_input.get("reload", false))
 	match device_id:
@@ -764,6 +793,8 @@ func _any_pad_triangle() -> bool:
 
 
 func _is_running() -> bool:
+	if is_bot:
+		return bool(_bot_input.get("run", false))
 	if is_networked:
 		return Input.is_action_pressed("p1_run") if is_local else bool(_remote_input.get("run", false))
 	match device_id:
@@ -778,6 +809,8 @@ func _is_running() -> bool:
 # tasto "secondary" (p1_secondary / p2_secondary in project.godot): tenuto
 # premuto attiva il blocco (vedi is_blocking in _physics_process)
 func _block_pressed() -> bool:
+	if is_bot:
+		return bool(_bot_input.get("block", false))
 	if is_networked:
 		return Input.is_action_pressed("p1_secondary") if is_local else bool(_remote_input.get("block", false))
 	match device_id:
@@ -790,6 +823,485 @@ func _block_pressed() -> bool:
 			# (controlli_manager.gd). Prima era su Quadrato (JOY_BUTTON_X), in
 			# conflitto col nuovo uso di Quadrato per l'attacco pesante.
 			return Input.is_joy_button_pressed(device_id, JOY_BUTTON_B)
+
+
+func _bot_consume(action: String) -> bool:
+	var pressed: bool = bool(_bot_input.get(action, false))
+	if pressed:
+		_bot_input[action] = false
+	return pressed
+
+
+func _bot_face_target() -> void:
+	if not is_instance_valid(_bot_target) or current_sprite == null:
+		return
+	var offset_x: float = _bot_target.global_position.x - global_position.x
+	# Una zona morta evita inversioni destra/sinistra quando i due corpi si
+	# sovrappongono o si incrociano di pochi pixel.
+	if absf(offset_x) > 55.0:
+		_set_facing(offset_x < 0.0)
+
+
+func _bot_shape_half_extents(collision: CollisionShape2D) -> Vector2:
+	if collision == null or collision.shape == null:
+		return Vector2.ZERO
+	var scale_abs: Vector2 = collision.global_scale.abs()
+	if collision.shape is RectangleShape2D:
+		return (collision.shape as RectangleShape2D).size * scale_abs * 0.5
+	if collision.shape is CircleShape2D:
+		var radius: float = (collision.shape as CircleShape2D).radius
+		return Vector2(radius * scale_abs.x, radius * scale_abs.y)
+	if collision.shape is CapsuleShape2D:
+		var capsule: CapsuleShape2D = collision.shape as CapsuleShape2D
+		return Vector2(capsule.radius * scale_abs.x, capsule.height * scale_abs.y * 0.5)
+	return Vector2.ZERO
+
+
+func _bot_can_land_basic_attack(target: Player) -> bool:
+	if current_hitbox_shape == null or target.hurtbox == null:
+		return false
+	var target_shape: CollisionShape2D = target.hurtbox.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if target_shape == null:
+		return false
+	var attack_half: Vector2 = _bot_shape_half_extents(current_hitbox_shape)
+	var target_half: Vector2 = _bot_shape_half_extents(target_shape)
+	if attack_half == Vector2.ZERO or target_half == Vector2.ZERO:
+		return false
+
+	# Valuta dove saranno le hitbox quando finisce il windup, non solo la
+	# distanza tra i centri dei personaggi al momento della decisione.
+	var windup: float = clampf(attack_delay, 0.0, 0.7)
+	var dash_time: float = minf(windup, attack_dash_duration)
+	var forward_travel: float = attack_dash_speed * dash_time \
+			+ attack_move_speed * maxf(windup - dash_time, 0.0)
+	var attack_center: Vector2 = current_hitbox_shape.global_position \
+			+ Vector2(get_facing_dir() * forward_travel, velocity.y * windup)
+	var target_motion_scale: float = 0.45 if target.hurt_stun_left > 0.0 else 1.0
+	var predicted_target_velocity := Vector2(
+		clampf(target.velocity.x * target_motion_scale, -350.0, 350.0),
+		clampf(target.velocity.y, -500.0, 500.0)
+	)
+	var target_center: Vector2 = target_shape.global_position + predicted_target_velocity * windup
+	var combined_half: Vector2 = attack_half + target_half + Vector2(8.0, 8.0)
+	return absf(attack_center.x - target_center.x) <= combined_half.x \
+			and absf(attack_center.y - target_center.y) <= combined_half.y
+
+
+func _bot_incoming_melee_threat(opponent: Player) -> bool:
+	if not opponent.isAttacking or opponent.current_hitbox_shape == null:
+		return false
+	var close_enough: bool = absf(opponent.global_position.x - global_position.x) < 225.0 \
+			and absf(opponent.global_position.y - global_position.y) < 175.0
+	if not close_enough:
+		return false
+	# isAttacking copre anche windup e recupero. Schiva solo quando la hitbox
+	# è già attiva o sta per attivarsi, non per tutta la durata dell'animazione.
+	return not opponent.current_hitbox_shape.disabled \
+			or (opponent.hitbox_delay_left > 0.0 and opponent.hitbox_delay_left <= 0.12)
+
+
+func _bot_notice_opponent_action(opponent: Player) -> void:
+	var turned_or_teleported: bool = _bot_has_target_sample \
+			and opponent.global_position.distance_to(_bot_last_target_position) > 75.0
+	_bot_last_target_position = opponent.global_position
+	_bot_has_target_sample = true
+	var power_busy: bool = opponent.secondary_power != null and opponent.secondary_power.is_busy()
+	var power_cooldown: float = -1.0
+	if opponent.secondary_power != null:
+		power_cooldown = float(opponent.secondary_power.cooldown_left)
+	var power_started: bool = (power_busy and not _bot_opponent_power_was_busy) \
+			or (power_cooldown >= 0.0 and _bot_last_opponent_power_cooldown >= 0.0 \
+			and power_cooldown > _bot_last_opponent_power_cooldown + 0.15)
+	if turned_or_teleported or power_started:
+		# Reagisce alla posizione nuova (teletrasporti inclusi) e interrompe
+		# l'attesa passiva per provare a punire l'avvio di una secondaria.
+		_set_facing(opponent.global_position.x < global_position.x)
+		_bot_attack_left = minf(_bot_attack_left, 0.08)
+	_bot_opponent_power_was_busy = power_busy
+	_bot_last_opponent_power_cooldown = power_cooldown
+
+
+func _bot_projectile_source(projectile: Node) -> Node:
+	for property: Dictionary in projectile.get_property_list():
+		var property_name: String = str(property.get("name", ""))
+		if property_name == "source" or property_name == "owner_player":
+			return projectile.get(property_name) as Node
+	return null
+
+
+func _bot_projectile_velocity(projectile: Node2D) -> Vector2:
+	if projectile.has_meta("vel"):
+		var velocity_from_meta: Vector2 = projectile.get_meta("vel", Vector2.ZERO)
+		return velocity_from_meta
+	var has_direction := false
+	var has_speed := false
+	for property: Dictionary in projectile.get_property_list():
+		var property_name: String = str(property.get("name", ""))
+		has_direction = has_direction or property_name == "direction"
+		has_speed = has_speed or property_name == "speed"
+	if has_direction and has_speed:
+		return Vector2(float(projectile.get("direction")) * float(projectile.get("speed")), 0.0)
+	if projectile.name == "PerucxFallingTennisBall":
+		return Vector2.DOWN * 220.0
+	return Vector2.ZERO
+
+
+func _bot_evade_hazards(opponent: Player) -> bool:
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return false
+	for hazard_node: Node in scene.find_children("PoisonArea", "Area2D", true, false):
+		var hazard: Area2D = hazard_node as Area2D
+		if hazard == null or int(hazard.get_meta("source_player_id", -1)) != opponent.player_id:
+			continue
+		var collision: CollisionShape2D = hazard.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		if collision == null or not (collision.shape is CircleShape2D):
+			continue
+		var radius: float = (collision.shape as CircleShape2D).radius * absf(hazard.global_scale.x)
+		var separation: Vector2 = global_position - collision.global_position
+		if separation.length() <= radius + 95.0:
+			_bot_evade_direction = signf(separation.x)
+			if _bot_evade_direction == 0.0:
+				_bot_evade_direction = -opponent.get_facing_dir()
+			_bot_begin_dodge()
+			return true
+
+		# Una nube lontana o alle spalle non deve congelare il bot. La tratta
+		# solo come barriera se si trova davvero fra lui e l'avversario.
+		var toward_target: float = signf(opponent.global_position.x - global_position.x)
+		var hazard_x: float = collision.global_position.x - global_position.x
+		var blocks_route: bool = toward_target != 0.0 \
+				and signf(hazard_x) == toward_target \
+				and absf(hazard_x) < absf(opponent.global_position.x - global_position.x) + radius \
+				and absf(separation.y) < radius + 120.0
+		if blocks_route:
+			# Se può colpire dalla distanza, lo fa restando fuori dalla nube;
+			# altrimenti aspetta che la barriera sparisca.
+			_bot_input["dir"] = 0.0
+			_bot_input["attack"] = false
+			_bot_attack_left = maxf(_bot_attack_left, 0.35)
+			_set_facing(opponent.global_position.x < global_position.x)
+			_bot_use_secondary_at_range(global_position.distance_to(opponent.global_position))
+			return true
+
+	for chain_node: Node in scene.find_children("BigChain", "Area2D", true, false):
+		var chain: Area2D = chain_node as Area2D
+		var chain_state: String = str(chain.get_meta("state", "")) if chain != null else ""
+		if chain == null or chain.get("source") != opponent \
+				or chain_state not in ["spawning", "travel"]:
+			continue
+		var chain_direction: float = float(chain.get_meta("dir", 0.0))
+		var to_bot: Vector2 = global_position - chain.global_position
+		var ahead_distance: float = to_bot.x * chain_direction
+		var warning_distance: float = 270.0 if chain_state == "spawning" else 440.0
+		if ahead_distance > 0.0 and ahead_distance < warning_distance and absf(to_bot.y) < 150.0:
+			_bot_evade_direction = -chain_direction
+			_bot_begin_dodge()
+			return true
+
+	# Hitbox persistenti e aree di controllo (per esempio la colonna caricata
+	# di Iacopo) non viaggiano come proiettili: reagisce alla loro forma attiva.
+	var own_hurt_shape: CollisionShape2D = hurtbox.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var own_half: Vector2 = _bot_shape_half_extents(own_hurt_shape)
+	for area_node: Node in scene.find_children("*", "Area2D", true, false):
+		var area: Area2D = area_node as Area2D
+		if area == null or _bot_projectile_source(area) != opponent:
+			continue
+		var shape: CollisionShape2D = area.get_node_or_null("CollisionShape2D") as CollisionShape2D
+		if shape == null or shape.disabled:
+			continue
+		var hazard_half: Vector2 = _bot_shape_half_extents(shape)
+		var separation: Vector2 = global_position - shape.global_position
+		if absf(separation.x) <= hazard_half.x + own_half.x + 70.0 \
+				and absf(separation.y) <= hazard_half.y + own_half.y + 55.0:
+			_bot_evade_direction = signf(separation.x)
+			if _bot_evade_direction == 0.0:
+				_bot_evade_direction = -opponent.get_facing_dir()
+			_bot_begin_dodge()
+			return true
+
+	# Tutte le secondarie che materializzano un proiettile condividono questo
+	# controllo: pallone, coltelli, palline e futuri proiettili con source + vel.
+	var projectile_nodes: Array[Node] = scene.find_children("*", "Area2D", true, false)
+	projectile_nodes.append_array(scene.find_children("SoccerBallProjectile", "Node2D", true, false))
+	for projectile_node: Node in projectile_nodes:
+		var projectile: Node2D = projectile_node as Node2D
+		if projectile == null or projectile == self or _bot_projectile_source(projectile) != opponent:
+			continue
+		var velocity: Vector2 = _bot_projectile_velocity(projectile)
+		if velocity.length_squared() <= 0.0:
+			continue
+		var to_bot: Vector2 = global_position - projectile.global_position
+		var along_path: float = to_bot.dot(velocity.normalized())
+		var distance_from_path: float = absf(to_bot.cross(velocity.normalized()))
+		if along_path > 0.0 and along_path < 520.0 and distance_from_path < 110.0:
+			_bot_evade_direction = -signf(velocity.x)
+			if _bot_evade_direction == 0.0:
+				_bot_evade_direction = -signf(opponent.global_position.x - global_position.x)
+			_bot_begin_dodge()
+			return true
+	return false
+
+
+func _bot_begin_dodge() -> void:
+	_bot_input["dir"] = _bot_evade_direction
+	_bot_attack_left = maxf(_bot_attack_left, 0.45)
+	if is_on_floor() and _bot_jump_left <= 0.0:
+		_bot_input["jump"] = true
+		_bot_jump_left = _bot_rng.randf_range(0.8, 1.2)
+
+
+func _bot_secondary_range() -> Vector2:
+	if secondary_power == null:
+		return Vector2.ZERO
+	var script: Script = secondary_power.get_script() as Script
+	var script_name: String = script.resource_path.get_file() if script != null else ""
+	match script_name:
+		"chain_power.gd", "chain_power_charged.gd":
+			return Vector2(170.0, 900.0)
+		"knife_power.gd", "andrix_madonnina.gd":
+			return Vector2(200.0, 850.0)
+		"perux_ambush.gd":
+			return Vector2(250.0, 650.0)
+		"perux_charged.gd":
+			return Vector2(250.0, 850.0)
+		"mencu_airstrike.gd":
+			return Vector2(0.0, float(secondary_power.params.get("blast_radius", 420.0)))
+		"nakakata_shadow_strike.gd":
+			return Vector2(0.0, 1600.0)
+		"trab_headbutt.gd":
+			return Vector2(220.0, 950.0)
+		_:
+			return Vector2(150.0, 420.0)
+
+
+func _bot_should_use_secondary(distance_x: float) -> bool:
+	if secondary_power == null or not secondary_power.can_use():
+		return false
+	var useful_range: Vector2 = _bot_secondary_range()
+	return distance_x >= useful_range.x and distance_x <= useful_range.y
+
+
+func _bot_stamina_goal() -> float:
+	if secondary_power == null:
+		return max_stamina
+	var power_params: Dictionary = secondary_power.params
+	if secondary_power.has_method("is_deadlift") and bool(secondary_power.call("is_deadlift")):
+		return max_stamina * float(power_params.get("aura_ratio_required", 1.0))
+	var target_distance: float = INF
+	if is_instance_valid(_bot_target):
+		target_distance = absf(global_position.x - _bot_target.global_position.x)
+	if secondary_power.has_charged_attack() and _bot_charge_opportunity(target_distance):
+		var charged_cost: float = _bot_charged_stamina_cost()
+		if charged_cost > 0.0:
+			return minf(max_stamina, charged_cost + 5.0)
+	var minimum: float = maxf(
+		float(power_params.get("stamina_min", 0.0)),
+		float(power_params.get("stamina_cost", 0.0))
+	)
+	return minf(max_stamina, minimum + 5.0)
+
+
+func _bot_situation_favors_power() -> bool:
+	if not is_instance_valid(_bot_target) or max_health <= 0 or _bot_target.max_health <= 0:
+		return false
+	var my_health: float = float(current_health) / float(max_health)
+	var their_health: float = float(_bot_target.current_health) / float(_bot_target.max_health)
+	var losing: bool = my_health <= 0.35 or my_health < their_health - 0.18
+	var far_ahead: bool = my_health >= 0.65 and my_health > their_health + 0.30
+	return losing or far_ahead
+
+
+func _bot_charged_stamina_cost() -> float:
+	if secondary_power == null:
+		return 0.0
+	var power_params: Dictionary = secondary_power.params
+	var script: Script = secondary_power.get_script() as Script
+	var script_name: String = script.resource_path.get_file() if script != null else ""
+	match script_name:
+		"chain_power_charged.gd":
+			return float(power_params.get("charge_stamina_cost", power_params.get("charge_stamina_min", 0.0)))
+		"perux_charged.gd":
+			return max_stamina
+		"andrix_madonnina.gd":
+			return float(power_params.get("madonna_stamina_cost", power_params.get("madonna_stamina_min", 0.0)))
+		_:
+			return float(power_params.get("stamina_cost", 0.0))
+
+
+func _bot_charge_opportunity(distance_x: float) -> bool:
+	if secondary_power == null or not secondary_power.has_charged_attack() \
+			or not is_instance_valid(_bot_target) \
+			or secondary_power.cooldown_left > 0.0 or secondary_power.is_busy():
+		return false
+	var useful_range: Vector2 = _bot_secondary_range()
+	if distance_x < useful_range.x or distance_x > useful_range.y:
+		return false
+	var script: Script = secondary_power.get_script() as Script
+	var script_name: String = script.resource_path.get_file() if script != null else ""
+	if script_name == "chain_power_charged.gd":
+		var pointer_limit: float = float(secondary_power.params.get("pointer_max_distance", 500.0))
+		if distance_x > pointer_limit + 80.0:
+			return false
+	var opponent_power_busy: bool = _bot_target.secondary_power != null \
+			and _bot_target.secondary_power.is_busy()
+	var safe_to_charge: bool = _bot_target.isHurt or _bot_target.is_blocking \
+			or (distance_x > 260.0 and not opponent_power_busy \
+			and not _bot_incoming_melee_threat(_bot_target))
+	# Le cariche diventano una scelta normale nelle finestre sicure, con priorità
+	# maggiore quando il bot sta perdendo o ha un vantaggio netto.
+	var good_opportunity: bool = _bot_situation_favors_power() \
+			or _bot_target.isHurt or _bot_target.is_blocking or distance_x > 350.0
+	return safe_to_charge and good_opportunity
+
+
+func _bot_should_charge_secondary(distance_x: float) -> bool:
+	return _bot_charge_opportunity(distance_x) \
+			and current_stamina >= _bot_charged_stamina_cost()
+
+
+func _bot_is_ready_deathlift(distance_x: float) -> bool:
+	return secondary_power != null \
+			and secondary_power.has_method("is_deadlift") \
+			and bool(secondary_power.call("is_deadlift")) \
+			and _bot_should_use_secondary(distance_x)
+
+
+func _bot_charged_extra_hold(distance_x: float) -> float:
+	var script: Script = secondary_power.get_script() as Script
+	var script_name: String = script.resource_path.get_file() if script != null else ""
+	if script_name == "chain_power_charged.gd":
+		var speed: float = maxf(float(secondary_power.params.get("pointer_speed", 300.0)), 1.0)
+		return clampf((distance_x - 160.0) / speed, 0.15, 0.8)
+	if script_name == "andrix_madonnina.gd":
+		return 0.1
+	return 0.15
+
+
+func _bot_use_secondary_at_range(distance_x: float) -> void:
+	if secondary_power == null or not is_on_floor() or not _bot_should_use_secondary(distance_x):
+		return
+	if secondary_power.has_charged_attack():
+		if not _bot_charge_active:
+			_bot_charge_active = true
+			_bot_charge_left = 0.0
+			if _bot_should_charge_secondary(distance_x):
+				_bot_charge_extra_hold = _bot_charged_extra_hold(distance_x)
+				_bot_charge_hold_limit = secondary_power.charge_time() + _bot_charge_extra_hold + 0.03
+			else:
+				_bot_charge_extra_hold = 0.0
+				_bot_charge_hold_limit = 0.05
+			_bot_input["block"] = true
+	else:
+		_bot_input["secondary"] = true
+
+
+func _update_bot_ai(delta: float) -> void:
+	if not is_bot:
+		return
+	_bot_attack_left = maxf(_bot_attack_left - delta, 0.0)
+	_bot_jump_left = maxf(_bot_jump_left - delta, 0.0)
+	if _bot_charge_active:
+		# Il bot usa il tocco rapido delle mosse caricabili: tenerle cariche lo
+		# immobilizzava a lungo. Carica solo quando la situazione e la stamina
+		# giustificano il rischio; altrimenti rilascia subito la mossa rapida.
+		if _secondary_charging:
+			_bot_charge_left += delta
+			_bot_input["block"] = _bot_charge_left < _bot_charge_extra_hold
+		else:
+			_bot_input["block"] = _secondary_hold_time < _bot_charge_hold_limit
+		if not bool(_bot_input["block"]):
+			_bot_charge_active = false
+	else:
+		_bot_input["block"] = false
+	_bot_think_left -= delta
+	if _bot_think_left > 0.0:
+		return
+	_bot_think_left = 0.10
+	_bot_input["jump"] = false
+	_bot_input["attack"] = false
+	_bot_input["secondary"] = false
+	_bot_input["reload"] = false
+	_bot_input["run"] = false
+
+	_bot_target = null
+	var closest_distance: float = INF
+	for candidate: Node in get_tree().get_nodes_in_group("players"):
+		if candidate is Player and candidate != self and not candidate.is_dead and candidate.current_health > 0:
+			var distance: float = global_position.distance_squared_to(candidate.global_position)
+			if distance < closest_distance:
+				_bot_target = candidate
+				closest_distance = distance
+	if not is_instance_valid(_bot_target):
+		_bot_input["dir"] = 0.0
+		return
+
+	# Quando l'avversario è a terra, il bot tenta direttamente la fatality cinematografica.
+	if _bot_target.is_downed and FatalityManager.is_player_downed(_bot_target.player_id) and GameState.gore_enabled:
+		FatalityManager.trigger_fatality(self, _bot_target)
+		return
+
+	var delta_x: float = _bot_target.global_position.x - global_position.x
+	var distance_x: float = absf(delta_x)
+	var toward: float = signf(delta_x)
+	if toward == 0.0:
+		toward = get_facing_dir()
+	_bot_notice_opponent_action(_bot_target)
+	# Il facing deve essere corretto prima di innescare un attacco o un potere:
+	# la direzione di movimento viene applicata più avanti nella fisica.
+	_bot_face_target()
+	if _bot_evade_hazards(_bot_target):
+		return
+	if _bot_hit_reaction_left > 0.0:
+		_bot_input["dir"] = -toward
+		_bot_input["run"] = distance_x > 180.0 and can_run
+		_bot_input["attack"] = false
+		_bot_input["secondary"] = false
+		return
+	var direction: float = 0.0
+	var evading_melee: bool = _bot_incoming_melee_threat(_bot_target)
+	if evading_melee and _bot_jump_left <= 0.0 and is_on_floor():
+		direction = -toward
+		_bot_input["jump"] = true
+		_bot_jump_left = _bot_rng.randf_range(0.7, 1.2)
+	elif evading_melee:
+		direction = -toward
+	var can_land_basic: bool = _bot_can_land_basic_attack(_bot_target)
+	if not evading_melee:
+		# Avanza finché la hitbox non può raggiungere il bersaglio. Non usare una
+		# soglia di distanza arbitraria: cambia molto tra i personaggi.
+		direction = 0.0 if can_land_basic else toward
+	_bot_input["dir"] = direction
+	_bot_input["run"] = can_run and distance_x > 300.0
+	if evading_melee:
+		return
+
+	# Ricarica solo quando c'e' spazio e l'avversario non sta iniziando un attacco.
+	var stamina_goal: float = _bot_stamina_goal()
+	var reload_distance: float = 260.0 if _bot_charge_opportunity(distance_x) else 300.0
+	if current_stamina + 1.0 < stamina_goal and distance_x > reload_distance \
+			and not _bot_incoming_melee_threat(_bot_target) and is_on_floor():
+		_bot_input["reload"] = true
+		return
+
+	var deadlift_ready: bool = _bot_is_ready_deathlift(distance_x)
+	var charged_ready: bool = _bot_should_charge_secondary(distance_x)
+	var choose_secondary: bool = is_on_floor() and _bot_should_use_secondary(distance_x) \
+			and (deadlift_ready or charged_ready or _bot_target.is_blocking or not can_land_basic)
+	if not choose_secondary and _bot_attack_left <= 0.0 and not isAttacking and can_land_basic:
+		_bot_input["attack"] = true
+		_bot_input["dir"] = 0.0
+		_bot_face_target()
+		# Pressa più velocemente quando l'avversario è vulnerabile; mantiene una
+		# pausa breve tra i colpi quando entrambi sono ancora in piedi e attivi.
+		_bot_attack_left = _bot_rng.randf_range(0.28, 0.44) if _bot_target.isHurt \
+				else _bot_rng.randf_range(0.42, 0.68)
+
+	if choose_secondary:
+		_bot_use_secondary_at_range(distance_x)
+		_bot_input["attack"] = false
+	if _bot_charge_active:
+		return
 
 
 # Gestisce il tasto "secondary" per i poteri con attacco caricato (vedi
@@ -941,6 +1453,9 @@ func _physics_process(delta: float) -> void:
 			synced_animation = "idle"
 		return
 
+	if is_bot:
+		_bot_hit_reaction_left = maxf(_bot_hit_reaction_left - delta, 0.0)
+
 	if not is_on_floor():
 		velocity += get_gravity() * delta
 
@@ -952,6 +1467,8 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0, hit_knockback * delta * 2.0)
 		move_and_slide()
 		return
+
+	_update_bot_ai(delta)
 
 	# ricarica stamina: tenendo premuto E / Triangolo si recupera stamina, ma il
 	# player resta fermo (niente movimento, salto, attacco o poteri) finche' dura
@@ -1017,7 +1534,10 @@ func _physics_process(delta: float) -> void:
 
 	if direction:
 		velocity.x = direction * current_speed
-		_set_facing(direction < 0)
+		if is_bot and is_instance_valid(_bot_target):
+			_bot_face_target()
+		else:
+			_set_facing(direction < 0)
 	else:
 		velocity.x = move_toward(velocity.x, 0, current_speed)
 
@@ -1166,6 +1686,18 @@ func _play_hit_feedback(source: Node, blocked: bool) -> void:
 			push_dir = d
 		var shove_force: float = source.attack_knockback if source is Player else hit_knockback
 		velocity.x = push_dir * shove_force * (0.4 if blocked else 1.0)
+
+	if is_bot:
+		# Svuota i comandi accumulati prima del colpo. Finito lo stun, il bot
+		# prima si disimpegna e poi rivaluta la situazione invece di ripartire
+		# verso la hitbox con il vecchio comando d'attacco.
+		_bot_hit_reaction_left = maxf(_bot_hit_reaction_left, 0.3 if blocked else 0.6)
+		_bot_attack_left = maxf(_bot_attack_left, 0.8)
+		_bot_charge_active = false
+		_bot_charge_left = 0.0
+		for action: String in ["attack", "secondary", "jump", "reload", "run", "block"]:
+			_bot_input[action] = false
+		_bot_input["dir"] = 0.0
 
 	if not blocked:
 		hurt_stun_left = hit_stun_duration

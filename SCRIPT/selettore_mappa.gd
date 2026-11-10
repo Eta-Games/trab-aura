@@ -157,6 +157,13 @@ func _conferma() -> void:
 	var o: Dictionary = _opzioni[_cursor_index]
 	_voti.append(o.id)
 	o.btn.modulate = COLORE_P1 if _voti.size() == 1 else COLORE_P2
+	if GameState.bot_enabled and _voti.size() == 1:
+		var bot_vote: Dictionary = _opzioni.pick_random()
+		_voti.append(int(bot_vote.id))
+		bot_vote.btn.modulate = COLORE_P2
+		_bloccato = true
+		_concludi()
+		return
 	if _voti.size() < 2:
 		_titolo.text = "Player 2: scegli la mappa"
 		return
@@ -171,6 +178,14 @@ func _concludi() -> void:
 	var mappa: Dictionary = _mappe[scelto].duplicate()
 	mappa["indice"] = scelto
 	corrente = mappa
-	_titolo.text = "Mappa estratta: %s" % mappa["nome"]
+	if GameState.bot_enabled and _voti.size() >= 2:
+		var bot_choice_name: String = "RANDOM"
+		for option: Dictionary in _opzioni:
+			if int(option.id) == _voti[1]:
+				bot_choice_name = str(option.btn.text)
+				break
+		_titolo.text = "Bot vota: %s\nMappa estratta: %s" % [bot_choice_name, mappa["nome"]]
+	else:
+		_titolo.text = "Mappa estratta: %s" % mappa["nome"]
 	await get_tree().create_timer(RITARDO_RISULTATO).timeout
 	mappa_scelta.emit(mappa)

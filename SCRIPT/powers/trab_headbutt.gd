@@ -83,6 +83,7 @@ func _launch_ball() -> void:
 		return
 	var direction := 1.0 if target.global_position.x >= player.global_position.x else -1.0
 	var ball: Node2D = BALL_SCRIPT.new()
+	ball.name = "SoccerBallProjectile"
 	player.get_parent().add_child(ball)
 	ball.global_position = player.global_position + Vector2(float(params["ball_spawn_offset"].x) * direction, float(params["ball_spawn_offset"].y))
 	ball.setup(direction, float(params["ball_speed"]), float(params["ball_size"]), target, player, int(params["damage"]))

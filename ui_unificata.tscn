@@ -398,6 +398,34 @@ text = "Indietro"
 [node name="SelezionePersonaggio" type="Node2D" parent="." unique_id=764590530]
 script = ExtResource("1_mlc5f")
 
+[node name="OpzioniBotLayer" type="CanvasLayer" parent="SelezionePersonaggio" unique_id=1582064990]
+layer = 10
+
+[node name="OpzioniBot" type="PanelContainer" parent="SelezionePersonaggio/OpzioniBotLayer" unique_id=1769005940]
+offset_left = 452.0
+offset_top = 591.0
+offset_right = 828.0
+offset_bottom = 705.0
+theme = SubResource("Theme_menu")
+
+[node name="Contenuto" type="VBoxContainer" parent="SelezionePersonaggio/OpzioniBotLayer/OpzioniBot" unique_id=2084823782]
+layout_mode = 2
+
+[node name="BotToggle" type="CheckButton" parent="SelezionePersonaggio/OpzioniBotLayer/OpzioniBot/Contenuto" unique_id=1034332770]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme = SubResource("Theme_menu")
+text = "Gioca contro bot"
+
+[node name="BotInputLabel" type="Label" parent="SelezionePersonaggio/OpzioniBotLayer/OpzioniBot/Contenuto" unique_id=1375281913]
+layout_mode = 2
+text = "I tuoi controlli:"
+
+[node name="BotInputMode" type="OptionButton" parent="SelezionePersonaggio/OpzioniBotLayer/OpzioniBot/Contenuto" unique_id=854444231]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme = SubResource("Theme_menu")
+
 [node name="CharacterSelectionGenderV0T5Ikpt1Sj45g1" type="Sprite2D" parent="SelezionePersonaggio" unique_id=1430094592]
 position = Vector2(640, 360.50003)
 scale = Vector2(0.76674634, 0.7683316)
@@ -408,7 +436,7 @@ position = Vector2(56, 422)
 texture = ExtResource("4_evl8s")
 
 [node name="AnteprimaP2" type="Sprite2D" parent="SelezionePersonaggio" unique_id=234503859]
-position = Vector2(1151.2822, 421.28214)
+position = Vector2(1190, 417)
 scale = Vector2(-1.2528716, 1.2528716)
 texture = ExtResource("5_r7y7g")
 
@@ -820,7 +848,7 @@ theme = SubResource("Theme_menu")
 theme_override_font_sizes/font_size = 22
 text = "Indietro"
 
-[connection signal="pressed" from="MenuPrincipale/START" to="." method="mostra_selezione_controlli"]
+[connection signal="pressed" from="MenuPrincipale/START" to="." method="start_local_game"]
 [connection signal="pressed" from="MenuPrincipale/ONLINE" to="." method="mostra_network_menu"]
 [connection signal="pressed" from="MenuPrincipale/IMPOSTAZIONI" to="." method="mostra_impostazioni"]
 [connection signal="pressed" from="MenuPrincipale/QUIT" to="." method="esci_gioco"]

@@ -121,6 +121,14 @@ func _assegna_controller(player_id: int, device: int) -> void:
 	assegnazioni[player_id] = {"tipo": "controller", "device": device, "mappa": SCHEMA_CONTROLLER}
 
 
+## In una partita contro il bot, assegna il dispositivo scelto al giocatore umano.
+func imposta_giocatore_contro_bot(usa_controller: bool) -> void:
+	if usa_controller and not Input.get_connected_joypads().is_empty():
+		_assegna_controller(0, Input.get_connected_joypads()[0])
+	else:
+		_assegna_tastiera(0, SCHEMA_WASD)
+
+
 # --- API da usare negli script dei personaggi -----------------------------
 
 func premuto(player_id: int, azione: String) -> bool:

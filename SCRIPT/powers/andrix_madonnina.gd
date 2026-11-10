@@ -308,6 +308,7 @@ func _spawn_poison_cloud(duration: float = -1.0, radius: float = -1.0) -> void:
 
 	_poison_area = Area2D.new()
 	_poison_area.name = "PoisonArea"
+	_poison_area.set_meta("source_player_id", player.player_id)
 	_poison_area.collision_layer = player.current_hitbox.collision_layer
 	_poison_area.collision_mask = player.current_hitbox.collision_mask
 	_poison_area.monitoring = true
