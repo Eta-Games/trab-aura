@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b4acry0jo5hfy"
-path="res://.godot/imported/plane.png-310e085f5e50bbf16c9b93f2828d69ee.ctex"
+uid="uid://con4fujvxhx7n"
+path="res://.godot/imported/burger.png-5646894ac58e6e8d3ac07dd413a9bc50.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://sprite/Player/IlMencu/Secondary/plane.png"
-dest_files=["res://.godot/imported/plane.png-310e085f5e50bbf16c9b93f2828d69ee.ctex"]
+source_file="res://sprite/Player/IlMencu/Secondary/burger.png"
+dest_files=["res://.godot/imported/burger.png-5646894ac58e6e8d3ac07dd413a9bc50.ctex"]
 
 [params]
 
