@@ -68,6 +68,11 @@ func is_busy() -> bool:
 	return false
 
 
+# I poteri Deathlift sovrascrivono questo metodo per mostrare lo stato sul HUD.
+func is_deadlift() -> bool:
+	return false
+
+
 # Il player ha subito un colpo (stordimento): interrompi quello che stai facendo
 func on_player_hit() -> void:
 	pass

@@ -2,6 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://bd611mefi04pv" path="res://sprite/Player/Perucx/perux-idle-trimmed.png" id="idle_sheet"]
 [ext_resource type="Texture2D" uid="uid://c71vukbe6cimx" path="res://sprite/Player/Perucx/perux-walk-trimmed.png" id="walk_sheet"]
+[ext_resource type="Texture2D" path="res://sprite/Player/Perucx/perux-attack.png" id="attack_sheet"]
 
 [sub_resource type="AtlasTexture" id="walk_00"]
 atlas = ExtResource("walk_sheet")
@@ -134,6 +135,82 @@ region = Rect2(0, 768, 256, 256)
 [sub_resource type="AtlasTexture" id="idle_16"]
 atlas = ExtResource("idle_sheet")
 region = Rect2(256, 768, 256, 256)
+
+[sub_resource type="AtlasTexture" id="attack_00"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(0, 0, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_01"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(256, 0, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_02"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(512, 0, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_03"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(768, 0, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_04"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(1024, 0, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_05"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(0, 256, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_06"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(256, 256, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_07"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(512, 256, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_08"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(768, 256, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_09"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(1024, 256, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_10"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(0, 512, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_11"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(256, 512, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_12"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(512, 512, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_13"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(768, 512, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_14"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(1024, 512, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_15"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(0, 768, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_16"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(256, 768, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_17"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(512, 768, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_18"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(768, 768, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_19"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(1024, 768, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_20"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(0, 1024, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_21"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(256, 1024, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_22"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(512, 1024, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_23"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(768, 1024, 256, 256)
+[sub_resource type="AtlasTexture" id="attack_24"]
+atlas = ExtResource("attack_sheet")
+region = Rect2(1024, 1024, 256, 256)
 
 [resource]
 animations = [{
@@ -298,4 +375,4 @@ animations = [{
 "loop": 1,
 "name": &"walk",
 "speed": 12.0
-}]
+}, {"frames": [{"duration": 1.0, "texture": SubResource("attack_00")}, {"duration": 1.0, "texture": SubResource("attack_01")}, {"duration": 1.0, "texture": SubResource("attack_02")}, {"duration": 1.0, "texture": SubResource("attack_03")}, {"duration": 1.0, "texture": SubResource("attack_04")}, {"duration": 1.0, "texture": SubResource("attack_05")}, {"duration": 1.0, "texture": SubResource("attack_06")}, {"duration": 1.0, "texture": SubResource("attack_07")}, {"duration": 1.0, "texture": SubResource("attack_08")}, {"duration": 1.0, "texture": SubResource("attack_09")}, {"duration": 1.0, "texture": SubResource("attack_10")}, {"duration": 1.0, "texture": SubResource("attack_11")}, {"duration": 1.0, "texture": SubResource("attack_12")}, {"duration": 1.0, "texture": SubResource("attack_13")}, {"duration": 1.0, "texture": SubResource("attack_14")}, {"duration": 1.0, "texture": SubResource("attack_15")}, {"duration": 1.0, "texture": SubResource("attack_16")}, {"duration": 1.0, "texture": SubResource("attack_17")}, {"duration": 1.0, "texture": SubResource("attack_18")}, {"duration": 1.0, "texture": SubResource("attack_19")}, {"duration": 1.0, "texture": SubResource("attack_20")}, {"duration": 1.0, "texture": SubResource("attack_21")}, {"duration": 1.0, "texture": SubResource("attack_22")}, {"duration": 1.0, "texture": SubResource("attack_23")}, {"duration": 1.0, "texture": SubResource("attack_24")}], "loop": false, "name": &"hit", "speed": 16.0}]
