@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://p2kwvqosedfk"
-path="res://.godot/imported/bomb.png-dd386d3e18037cebe84ef6d00fd52cdc.ctex"
+uid="uid://dwykp36smnl76"
+path="res://.godot/imported/burger_nobg.png-e96076551ca0fc1ae114e12676442a9a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://sprite/Player/IlMencu/Secondary/bomb.png"
-dest_files=["res://.godot/imported/bomb.png-dd386d3e18037cebe84ef6d00fd52cdc.ctex"]
+source_file="res://sprite/Player/IlMencu/Secondary/burger_nobg.png"
+dest_files=["res://.godot/imported/burger_nobg.png-e96076551ca0fc1ae114e12676442a9a.ctex"]
 
 [params]
 
