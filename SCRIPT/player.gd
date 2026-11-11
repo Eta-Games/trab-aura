@@ -137,7 +137,8 @@ var chain_sprite: AnimatedSprite2D = null  # effetto del pugno (opzionale): [mod
 @onready var hurtbox: Hurtbox = $Hurtbox
 
 # --- Potere secondario: si collega da [secondary] nel .cfg del personaggio ---
-var secondary_power = null  # potere collegato (script che estende fighter_power.gd), senza tipo per non creare dipendenze circolari
+var secondary_power = null  # potere collegato da [secondary].
+var deathlift_power = null
 
 # sprite e hitbox di ogni personaggio, indicizzati per nome (vedi _ready):
 # se il nodo esiste gia' in scena (personaggio disegnato a mano) viene
@@ -545,8 +546,32 @@ func _setup_secondary_power() -> void:
 	secondary_power = power
 
 
+func _setup_deathlift_power() -> void:
+	var cfg: ConfigFile = _fighter_cfgs.get(fighter_name)
+	if cfg == null or not cfg.has_section("deathlift"):
+		return
+	var script_path := str(cfg.get_value("deathlift", "script", ""))
+	var power_script := load(script_path) as GDScript
+	if power_script == null:
+		push_warning("[%s] deathlift: script '%s' non trovato" % [fighter_name, script_path])
+		return
+	var power = power_script.new()
+	var values: Dictionary = power.default_params()
+	for key in cfg.get_section_keys("deathlift"):
+		if key != "script" and values.has(key):
+			values[key] = cfg.get_value("deathlift", key)
+	power.name = "DeathliftPower"
+	add_child(power)
+	power.setup(self, values)
+	deathlift_power = power
+
+
+func _deathlift_ready() -> bool:
+	return deathlift_power != null and deathlift_power.can_use()
+
+
 func _power_busy() -> bool:
-	return secondary_power != null and secondary_power.is_busy()
+	return (secondary_power != null and secondary_power.is_busy()) or (deathlift_power != null and deathlift_power.is_busy())
 
 
 # Aggiunge/toglie stamina (clampata tra 0 e max_stamina) ed emette stamina_changed
@@ -646,6 +671,7 @@ func _ready() -> void:
 	_was_on_floor = is_on_floor()
 
 	_setup_secondary_power()
+	_setup_deathlift_power()
 
 
 # Altezza in pixel di un fotogramma di un'animazione (0.0 se non esiste)
@@ -1325,11 +1351,16 @@ func _update_charged_secondary(delta: float) -> void:
 	else:
 		if _secondary_charging:
 			_secondary_charging = false
-			secondary_power.release_charge()
-		elif _secondary_hold_time > 0.0 and is_on_floor() and not isAttacking \
-				and secondary_power.can_use():
-			secondary_power.use()  # pressione breve: attacco normale (sotto la soglia di carica)
-			_play_power_trail()
+			if _deathlift_ready():
+				deathlift_power.use()
+			else:
+				secondary_power.release_charge()
+		elif _secondary_hold_time > 0.0 and is_on_floor() and not isAttacking:
+			if _deathlift_ready():
+				deathlift_power.use()
+			elif secondary_power.can_use():
+				secondary_power.use()
+				_play_power_trail()
 		_secondary_hold_time = 0.0
 
 
@@ -1496,8 +1527,11 @@ func _physics_process(delta: float) -> void:
 	if chargeable:
 		_update_charged_secondary(delta)
 	elif secondary_power != null and _secondary_just_pressed() and is_on_floor() \
-			and not isAttacking and secondary_power.can_use():
-		secondary_power.use()
+			and not isAttacking and (secondary_power.can_use() or _deathlift_ready()):
+		if _deathlift_ready():
+			deathlift_power.use()
+		else:
+			secondary_power.use()
 		_play_power_trail()
 	var power_busy: bool = _power_busy()
 

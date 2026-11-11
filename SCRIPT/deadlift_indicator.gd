@@ -22,7 +22,7 @@ func _process(delta: float) -> void:
 	if _player == null:
 		visible = false
 		return
-	var power: Variant = _player.secondary_power
+	var power: Variant = _player.get("deathlift_power")
 	visible = true
 	var supports_deadlift: bool = power != null and power.has_method("is_deadlift") and bool(power.is_deadlift())
 	if not supports_deadlift:

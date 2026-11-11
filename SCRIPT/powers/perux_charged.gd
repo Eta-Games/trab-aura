@@ -31,6 +31,7 @@ func default_params() -> Dictionary:
 		"ball_gravity": 850.0,
 		"ball_size_ratio": 0.28,
 		"ball_lifetime": 3.0,
+
 	}, true)
 	return values
 
@@ -40,6 +41,7 @@ func _on_setup() -> void:
 	_ball_texture = load(str(params["ball_sprite"])) as Texture2D
 	if _ball_texture == null:
 		push_warning("Perucx: pallina non trovata: %s" % params["ball_sprite"])
+
 
 
 func has_charged_attack() -> bool:
