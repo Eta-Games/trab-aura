@@ -47,6 +47,7 @@ var blood_speed_min: float = 60.0
 var blood_speed_max: float = 180.0
 
 # --- blocco (guardia): tasti p1_secondary / p2_secondary ---
+var aura_loss_on_hit: float = 12.0 # aura persa a ogni colpo subito
 var block_damage_reduction: float = 0.3  # % di danno ancora subita mentre si blocca (0 = blocco perfetto)
 
 # --- NUOVO: identità e schema di controllo del player ---
@@ -1642,6 +1643,7 @@ func _on_damaged(amount: int, source: Node) -> void:
 			# e' gia' all'HP minimo, in attesa del colpo di grazia: un colpo qualsiasi la finisce
 			# (vedi FatalityManager.settings.any_hit_finishes). Niente danno da calcolare: parte
 			# direttamente la cinematica, che a fine sequenza emette "died" come faceva questo script prima.
+			gain_stamina(-aura_loss_on_hit)
 			_play_hit_feedback(source, false)
 			FatalityManager.downed_player_hit(self, source)
 			return
@@ -1653,6 +1655,8 @@ func _on_damaged(amount: int, source: Node) -> void:
 
 	var downed_health: int = FatalityManager.settings.downed_health if FatalityManager.settings else 1
 	var would_be_health: int = current_health - applied_damage
+
+	gain_stamina(-aura_loss_on_hit)
 
 	if would_be_health <= 0:
 		# invece di morire subito, si ferma all'HP minimo e diventa "downed":

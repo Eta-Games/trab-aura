@@ -7,6 +7,7 @@ var target: Player
 var owner_player: Player
 var damage := 35
 var _age := 0.0
+var _rally_hits := 0
 
 
 func setup(heading: float, velocity: float, size: float, victim: Player, owner: Player, hit_damage: int) -> void:
@@ -23,13 +24,44 @@ func _process(delta: float) -> void:
 	global_position.x += direction * speed * delta
 	rotation += direction * delta * 12.0
 	queue_redraw()
+	if _check_punch_reflection():
+		return
 	if is_instance_valid(target) and not target.is_dead and target.current_health > 0:
 		if global_position.distance_to(target.hurtbox.global_position) <= radius + 28.0:
 			target.hurtbox.take_damage(damage, owner_player)
 			queue_free()
 			return
-	if _age > 2.0 or absf(global_position.x - owner_player.global_position.x) > 2400.0:
+	if not is_instance_valid(owner_player) or not is_instance_valid(target) \
+			or owner_player.is_dead or target.is_dead or _age > 30.0:
 		queue_free()
+
+
+func _check_punch_reflection() -> bool:
+	if not is_instance_valid(owner_player) or not is_instance_valid(target):
+		return false
+	for fighter in owner_player.get_parent().get_children():
+		if not fighter is Player or fighter.is_dead or not fighter.isAttacking:
+			continue
+		var punch_shape: CollisionShape2D = fighter.current_hitbox_shape
+		if punch_shape == null or punch_shape.disabled:
+			continue
+		var half_size := Vector2.ZERO
+		if punch_shape.shape is RectangleShape2D:
+			half_size = (punch_shape.shape as RectangleShape2D).size * punch_shape.global_scale.abs() * 0.5
+		elif punch_shape.shape is CircleShape2D:
+			var scaled_radius: float = (punch_shape.shape as CircleShape2D).radius * maxf(absf(punch_shape.global_scale.x), absf(punch_shape.global_scale.y))
+			half_size = Vector2.ONE * scaled_radius
+		if absf(global_position.x - punch_shape.global_position.x) > half_size.x + radius \
+				or absf(global_position.y - punch_shape.global_position.y) > half_size.y + radius:
+			continue
+		var previous_owner := owner_player
+		owner_player = fighter
+		target = previous_owner if fighter == target else target
+		direction = 1.0 if target.global_position.x > global_position.x else -1.0
+		speed = minf(speed * 1.06, 1600.0)
+		_rally_hits += 1
+		return true
+	return false
 
 
 func _draw() -> void:
