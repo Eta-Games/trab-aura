@@ -1,6 +1,9 @@
 class_name Player
 extends CharacterBody2D
 
+const NORMAL_PUNCH_HITBOX_SIZE := Vector2(61.0, 20.0)
+const NORMAL_PUNCH_HITBOX_OFFSET := Vector2(80.0, -35.0)
+
 signal health_changed  # <-- serve per healt_bar.gd
 signal stamina_changed  # <-- serve per stamina_bar.gd
 signal died(player)  # emesso una sola volta quando la vita arriva a 0 (lo ascolta level.gd)
@@ -82,6 +85,8 @@ var intro_locked: bool = false
 # level.gd faccia e in qualunque momento lo faccia.
 var is_dead: bool = false
 var frozen_time_left: float = 0.0  # secondi di immobilita' forzata da un potere
+var slow_time_left: float = 0.0
+var _slow_speed_multiplier: float = 1.0
 var hitbox_delay_left: float = 0.0  # secondi che mancano all'attivazione della hitbox
 var hurt_stun_left: float = 0.0  # secondi di stordimento rimanenti dopo un colpo subito
 var is_blocking: bool = false  # true mentre il player tiene premuto il tasto "secondary"
@@ -231,6 +236,10 @@ func _setup_networking() -> void:
 # Sul client questo Player non è autorevole: non simula nulla, si limita a
 # mostrare l'animazione/il verso arrivati sincronizzati dall'host.
 func _process(_delta: float) -> void:
+	if slow_time_left > 0.0:
+		slow_time_left = maxf(slow_time_left - _delta, 0.0)
+		if slow_time_left == 0.0:
+			_slow_speed_multiplier = 1.0
 	if not is_networked or is_multiplayer_authority():
 		return
 	if current_sprite == null:
@@ -408,42 +417,64 @@ func _get_or_build_sprite(fighter: String) -> AnimatedSprite2D:
 	return built
 
 
-# Trova la hitbox del pugno se esiste gia' sotto lo sprite; altrimenti la crea
-# copiando hitbox_template_node (base.cfg) con gli eventuali hitbox_offset_x/y,
-# hitbox_width/height del file del personaggio ([model]).
+# Costruisce la hitbox del pugno normale. Tutti i personaggi tranne il Mencu
+# usano una forma comune figlia del Player, indipendente dalla scala dello sprite.
+# Il Mencu conserva la hitbox del proprio modello.
 func _get_or_build_hitbox(fighter: String, sprite: AnimatedSprite2D) -> Hitbox:
 	var cfg: ConfigFile = _fighter_cfgs[fighter]
 	var hitbox_node_name: String = str(_stat_of(fighter, "model", "hitbox_node", "PunchHitbox"))
 
 	var existing: Node = sprite.get_node_or_null(hitbox_node_name)
-	if existing is Hitbox:
+	# Il Mencu mantiene la hitbox già tarata nel suo modello.
+	if fighter.to_lower() == "mencu" and existing is Hitbox:
 		return existing
 
-	var template_path: String = str(_stat_of(fighter, "model", "hitbox_template_node", "TRAB_Sprite2D/PunchHitbox"))
-	var template: Node = get_node_or_null(template_path)
-	if not (template is Hitbox):
-		push_warning("hitbox_template_node '%s' non trovata: %s non avra' una hitbox" % [template_path, fighter])
-		return null
+	var hitbox: Hitbox
+	if existing is Hitbox:
+		hitbox = existing
+	else:
+		var template_path: String = str(_stat_of(fighter, "model", "hitbox_template_node", "TRAB_Sprite2D/PunchHitbox"))
+		var template: Node = get_node_or_null(template_path)
+		if not (template is Hitbox):
+			push_warning("hitbox_template_node '%s' non trovata: %s non avra' una hitbox" % [template_path, fighter])
+			return null
+		hitbox = (template as Hitbox).duplicate()
+		sprite.add_child(hitbox)
 
-	var hitbox: Hitbox = template.duplicate()
-	hitbox.name = hitbox_node_name.get_file()  # se hitbox_node e' un percorso tipo "Chain/PunchHitbox"
-	sprite.add_child(hitbox)
+	if fighter.to_lower() == "mencu":
+		hitbox.name = hitbox_node_name.get_file()
+		var mencu_shape: CollisionShape2D = hitbox.get_node("CollisionShape2D")
+		mencu_shape.position = Vector2(
+			float(cfg.get_value("model", "hitbox_offset_x", mencu_shape.position.x)),
+			float(cfg.get_value("model", "hitbox_offset_y", mencu_shape.position.y))
+		)
+		if cfg.has_section_key("model", "hitbox_width") or cfg.has_section_key("model", "hitbox_height"):
+			var mencu_rect: Shape2D = mencu_shape.shape
+			if mencu_rect is RectangleShape2D:
+				var resized_shape: RectangleShape2D = mencu_rect.duplicate()
+				resized_shape.size = Vector2(
+					float(cfg.get_value("model", "hitbox_width", mencu_rect.size.x)),
+					float(cfg.get_value("model", "hitbox_height", mencu_rect.size.y))
+				)
+				mencu_shape.shape = resized_shape
+		return hitbox
 
+	# Tutti gli altri pugni normali condividono forma e posizione nello spazio
+	# del Player; la hitbox non eredita piu' la scala del modello o della catena.
+	if hitbox.get_parent() != self:
+		hitbox.reparent(self)
+	hitbox.name = "NormalPunchHitbox_%s" % fighter
+	hitbox.position = Vector2.ZERO
+	hitbox.rotation = 0.0
+	hitbox.scale = Vector2.ONE
 	var shape_node: CollisionShape2D = hitbox.get_node("CollisionShape2D")
-	shape_node.position = Vector2(
-		float(cfg.get_value("model", "hitbox_offset_x", shape_node.position.x)),
-		float(cfg.get_value("model", "hitbox_offset_y", shape_node.position.y))
-	)
-
-	if cfg.has_section_key("model", "hitbox_width") or cfg.has_section_key("model", "hitbox_height"):
-		var shape: Shape2D = shape_node.shape
-		if shape is RectangleShape2D:
-			var new_shape: RectangleShape2D = shape.duplicate()
-			new_shape.size = Vector2(
-				float(cfg.get_value("model", "hitbox_width", shape.size.x)),
-				float(cfg.get_value("model", "hitbox_height", shape.size.y))
-			)
-			shape_node.shape = new_shape
+	var uniform_shape := RectangleShape2D.new()
+	uniform_shape.size = NORMAL_PUNCH_HITBOX_SIZE
+	shape_node.shape = uniform_shape
+	shape_node.position = NORMAL_PUNCH_HITBOX_OFFSET
+	shape_node.rotation = 0.0
+	shape_node.scale = Vector2.ONE
+	hitbox.set_meta("uniform_normal_punch", true)
 
 	return hitbox
 
@@ -462,6 +493,8 @@ func _load_stats() -> void:
 	is_dead = false
 	frozen_time_left = 0.0
 	FatalityManager.restore_player_visual(self)
+	slow_time_left = 0.0
+	_slow_speed_multiplier = 1.0
 	FatalityManager.clear_downed(player_id)
 
 	max_health = int(_stat("stats", "max_health", max_health))
@@ -603,6 +636,13 @@ func freeze_for(seconds: float) -> void:
 	_cancel_attack()
 
 
+func apply_slow(seconds: float, speed_multiplier: float = 0.5) -> void:
+	if seconds <= 0.0:
+		return
+	slow_time_left = maxf(slow_time_left, seconds)
+	_slow_speed_multiplier = minf(_slow_speed_multiplier, clampf(speed_multiplier, 0.1, 1.0))
+
+
 # Altezza visibile del personaggio in pixel di mondo (serve ai poteri per scalarsi)
 func get_visual_height() -> float:
 	var local_y: float = maxf(absf(current_sprite.scale.y), 0.0001)
@@ -694,9 +734,9 @@ func _update_sprite_scale() -> void:
 	if frame_h > 0.0 and _idle_frame_height > 0.0:
 		factor = _idle_frame_height / frame_h
 	current_sprite.scale = _base_scale * _model_scale * factor
-	# la hitbox e' figlia dello sprite: compensa il fattore cosi' la portata del
-	# pugno non cambia quando cambia il fotogramma
-	if current_hitbox != null:
+	# Le hitbox uniformi sono sotto il Player e non seguono la scala delle
+	# animazioni. Per la hitbox originale del Mencu conserva la compensazione.
+	if current_hitbox != null and not current_hitbox.has_meta("uniform_normal_punch"):
 		current_hitbox.scale = Vector2.ONE / factor
 
 
@@ -1564,6 +1604,7 @@ func _physics_process(delta: float) -> void:
 		current_speed = attack_move_speed
 	elif power_busy:
 		current_speed = 0.0  # fermo mentre lancia il potere secondario
+	current_speed *= _slow_speed_multiplier
 
 	# mentre si blocca o si lancia il potere secondario si resta fermi sul posto
 	var direction := 0.0 if (is_blocking or power_busy) else _get_direction()
@@ -1579,7 +1620,7 @@ func _physics_process(delta: float) -> void:
 
 	if _attack_dash_left > 0.0:
 		_attack_dash_left = maxf(_attack_dash_left - delta, 0.0)
-		velocity.x = get_facing_dir() * attack_dash_speed
+		velocity.x = get_facing_dir() * attack_dash_speed * _slow_speed_multiplier
 
 	if not isAttacking and not power_busy:
 		if direction:
