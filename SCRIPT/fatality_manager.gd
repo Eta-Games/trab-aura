@@ -81,6 +81,7 @@ var _camera_drag_v_was_enabled: bool = false
 # completare comunque la "morte" (died) se _run_sequence si e' inceppato,
 # invece di lasciare tutto a meta' senza che il round finisca mai.
 var _current_victim: Player = null
+var _fatality_remnants: Dictionary = {} # instance_id vittima -> sprite sostitutivo
 
 
 func _ready() -> void:
@@ -431,9 +432,11 @@ func _run_sequence(killer: Node, victim: Player, via_combo: bool) -> void:
 		_current_victim = null
 		return
 
+	var use_iacopo_fatality: bool = killer is Player and killer.fighter_name == "iacopo"
+
 	_play_oneshot(settings.trigger_sound)
 
-	if settings.use_slowmo_on_trigger:
+	if settings.use_slowmo_on_trigger and not use_iacopo_fatality:
 		Engine.time_scale = settings.slowmo_time_scale
 		await get_tree().create_timer(settings.slowmo_duration, true, false, true).timeout
 		Engine.time_scale = 1.0
@@ -475,20 +478,41 @@ func _run_sequence(killer: Node, victim: Player, via_combo: bool) -> void:
 	if camera:
 		var target: Vector2 = victim.global_position + settings.camera_offset
 		var target_zoom: Vector2 = camera_original_zoom * settings.camera_zoom_multiplier
-		print("[Fatality] zoom camera: da %s a %s (moltiplicatore %s) in %ss" % [camera_original_zoom, target_zoom, settings.camera_zoom_multiplier, settings.camera_pan_time])
+		var pan_duration: float = minf(settings.camera_pan_time, 0.22) if use_iacopo_fatality else settings.camera_pan_time
+		print("[Fatality] zoom camera: da %s a %s (moltiplicatore %s) in %ss" % [camera_original_zoom, target_zoom, settings.camera_zoom_multiplier, pan_duration])
 		var tw := create_tween()
 		tw.set_parallel(true)
 		tw.set_trans(settings.camera_pan_trans)
 		tw.set_ease(settings.camera_pan_ease)
-		tw.tween_property(camera, "global_position", target, settings.camera_pan_time)
-		tw.tween_property(camera, "zoom", target_zoom, settings.camera_pan_time)
+		tw.tween_property(camera, "global_position", target, pan_duration)
+		tw.tween_property(camera, "zoom", target_zoom, pan_duration)
 		await tw.finished
 
 	var killer_name: String = killer.fighter_name if (killer is Player) else "unknown"
 	var anim_name: String = "%s_%s" % [victim.fighter_name, killer_name]
-	var has_anim: bool = _ensure_fatality_animation(victim, anim_name)
+	# La fatality di Iacopo usa effetti generici: non carica la spritesheet beta
+	# trab_iacopo, così funziona con qualunque personaggio come vittima.
+	var has_anim: bool = false
+	if not use_iacopo_fatality:
+		has_anim = _ensure_fatality_animation(victim, anim_name)
 
-	if has_anim:
+	if use_iacopo_fatality:
+		var sprite: AnimatedSprite2D = victim.current_sprite
+		var has_hurt: bool = _ensure_fatality_animation(victim, "hurt")
+		if has_hurt:
+			sprite.stop()
+			sprite.play("hurt")
+			var hurt_frames: int = sprite.sprite_frames.get_frame_count("hurt")
+			var impact_frame: int = maxi(0, int(hurt_frames * 0.08))
+			await _await_animation_frame(sprite, "hurt", impact_frame, settings.max_animation_duration)
+		else:
+			# I personaggi senza posa hurt restano sulla propria posa corrente.
+			sprite.stop()
+			await get_tree().create_timer(0.08).timeout
+		await _play_iacopo_impact(victim)
+		if has_hurt and sprite.is_playing():
+			await _await_first(sprite.animation_finished, get_tree().create_timer(settings.max_animation_duration).timeout)
+	elif has_anim:
 		var frames: SpriteFrames = victim.current_sprite.sprite_frames
 		if settings.animation_fps_override > 0.0:
 			frames.set_animation_speed(anim_name, settings.animation_fps_override)
@@ -533,6 +557,162 @@ func _run_sequence(killer: Node, victim: Player, via_combo: bool) -> void:
 	victim.health_changed.emit()
 	victim.died.emit(victim)
 	_current_victim = null
+
+
+func _await_animation_frame(sprite: AnimatedSprite2D, anim_name: String, target_frame: int, timeout: float) -> void:
+	var deadline: float = Time.get_ticks_msec() / 1000.0 + timeout
+	while is_instance_valid(sprite) and sprite.animation == anim_name \
+			and sprite.frame < target_frame and Time.get_ticks_msec() / 1000.0 < deadline:
+		await get_tree().process_frame
+
+
+func _play_iacopo_impact(victim: Player) -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(FIGHTERS_DIR + "iacopo.cfg") != OK:
+		return
+	var impact_section := "fatality"
+	var chain_path: String = str(cfg.get_value(impact_section, "impact_sheet", ""))
+	var scream_path: String = str(cfg.get_value(impact_section, "impact_sound", ""))
+	if chain_path == "" or not ResourceLoader.exists(chain_path):
+		push_warning("[Fatality] foglio catene non configurato o non trovato: '%s'" % chain_path)
+		return
+
+	var chain_texture: Texture2D = load(chain_path)
+	if chain_texture == null:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "IacopoFatalityImpact"
+	layer.layer = 110
+	get_tree().root.add_child(layer)
+
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var target_screen_position: Vector2 = get_viewport().get_canvas_transform() * victim.global_position
+	var soft_texture: Texture2D = _make_soft_circle_texture()
+	var blood_cloud := Sprite2D.new()
+	blood_cloud.name = "BloodCloud"
+	blood_cloud.texture = soft_texture
+	blood_cloud.position = target_screen_position
+	blood_cloud.scale = Vector2(0.35, 0.28)
+	blood_cloud.modulate = Color(0.82, 0.008, 0.02, 0.72)
+	layer.add_child(blood_cloud)
+	var cloud_tween := create_tween()
+	cloud_tween.set_parallel(true)
+	cloud_tween.tween_property(blood_cloud, "scale", Vector2(2.2, 1.65), 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	cloud_tween.tween_property(blood_cloud, "modulate:a", 0.0, 0.95).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+	var particles := CPUParticles2D.new()
+	particles.name = "RedBloodParticles"
+	particles.position = target_screen_position
+	particles.texture = soft_texture
+	particles.amount = 64
+	particles.lifetime = 0.72
+	particles.one_shot = true
+	particles.explosiveness = 0.72
+	particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	particles.emission_rect_extents = Vector2(28.0, 20.0)
+	particles.direction = Vector2(0.0, -1.0)
+	particles.spread = 180.0
+	particles.gravity = Vector2(0.0, 42.0)
+	particles.initial_velocity_min = 35.0
+	particles.initial_velocity_max = 155.0
+	particles.scale_amount_min = 0.12
+	particles.scale_amount_max = 0.34
+	particles.color = Color(0.9, 0.012, 0.025, 0.8)
+	var particle_gradient := Gradient.new()
+	particle_gradient.set_color(0, Color(0.95, 0.02, 0.035, 0.82))
+	particle_gradient.add_point(0.55, Color(0.65, 0.008, 0.02, 0.55))
+	particle_gradient.set_color(1, Color(0.4, 0.0, 0.01, 0.0))
+	particles.color_ramp = particle_gradient
+	layer.add_child(particles)
+	particles.emitting = true
+
+	var burst_frames := SpriteFrames.new()
+	burst_frames.remove_animation("default")
+	burst_frames.add_animation("burst")
+	burst_frames.set_animation_loop("burst", false)
+	burst_frames.set_animation_speed("burst", float(cfg.get_value(impact_section, "impact_fps", 20.0)))
+	var hframes := 4
+	var vframes := 4
+	var fw := chain_texture.get_width() / hframes
+	var fh := chain_texture.get_height() / vframes
+	for row in range(vframes):
+		for col in range(hframes):
+			var frame := AtlasTexture.new()
+			frame.atlas = chain_texture
+			frame.region = Rect2(col * fw, row * fh, fw, fh)
+			burst_frames.add_frame("burst", frame)
+	var burst := AnimatedSprite2D.new()
+	burst.name = "ReturningChains"
+	burst.sprite_frames = burst_frames
+	burst.animation = "burst"
+	burst.centered = true
+	var fit_scale: float = minf(viewport_size.x * 0.42 / fw, viewport_size.y * 0.42 / fh)
+	burst.scale = Vector2.ONE * fit_scale
+	burst.position = target_screen_position
+	layer.add_child(burst)
+	burst.play("burst")
+	await get_tree().process_frame
+	if scream_path != "" and ResourceLoader.exists(scream_path):
+		var scream := AudioStreamPlayer.new()
+		scream.name = "FatalityScream"
+		scream.stream = load(scream_path)
+		scream.volume_db = 6.0
+		add_child(scream)
+		scream.play()
+		scream.finished.connect(scream.queue_free)
+	await burst.animation_finished
+
+	_replace_victim_with_remnant(victim)
+	await get_tree().create_timer(0.18).timeout
+	layer.queue_free()
+
+
+func _make_soft_circle_texture(size: int = 64) -> Texture2D:
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var center: float = (size - 1) * 0.5
+	var radius: float = center
+	for y in range(size):
+		for x in range(size):
+			var distance: float = Vector2(x - center, y - center).length() / radius
+			var alpha: float = pow(maxf(1.0 - distance, 0.0), 2.0)
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	return ImageTexture.create_from_image(image)
+
+
+func _replace_victim_with_remnant(victim: Player) -> void:
+	if not is_instance_valid(victim.current_sprite):
+		return
+	var source: AnimatedSprite2D = victim.current_sprite
+	if source.sprite_frames == null or not source.sprite_frames.has_animation(source.animation) \
+			or source.sprite_frames.get_frame_count(source.animation) == 0:
+		return
+	var remnant := Sprite2D.new()
+	remnant.name = "FatalityRemnant"
+	var frame_index: int = clampi(source.frame, 0, source.sprite_frames.get_frame_count(source.animation) - 1)
+	remnant.texture = source.sprite_frames.get_frame_texture(source.animation, frame_index)
+	remnant.centered = source.centered
+	remnant.offset = source.offset
+	remnant.position = source.position
+	remnant.rotation = source.rotation
+	remnant.scale = source.scale
+	remnant.flip_h = source.flip_h
+	remnant.z_index = source.z_index
+	remnant.modulate = Color(0.68, 0.25, 0.25, 1.0)
+	source.get_parent().add_child(remnant)
+	source.visible = false
+	_fatality_remnants[victim.get_instance_id()] = remnant
+
+
+func restore_player_visual(player: Player) -> void:
+	if player == null:
+		return
+	var key: int = player.get_instance_id()
+	var remnant: Node = _fatality_remnants.get(key, null)
+	if is_instance_valid(remnant):
+		remnant.queue_free()
+	_fatality_remnants.erase(key)
+	if is_instance_valid(player.current_sprite):
+		player.current_sprite.visible = true
 
 
 func _play_oneshot(stream: AudioStream) -> void:

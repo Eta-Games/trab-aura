@@ -461,6 +461,7 @@ func _load_stats() -> void:
 	combat_locked = false
 	is_dead = false
 	frozen_time_left = 0.0
+	FatalityManager.restore_player_visual(self)
 	FatalityManager.clear_downed(player_id)
 
 	max_health = int(_stat("stats", "max_health", max_health))
