@@ -7,7 +7,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Invia embed su Discord
+      - name: Invia messaggio su Discord
         env:
           WEBHOOK: "https://discord.com/api/webhooks/1575516985444401324/vV6UnADmBiJhw192fQ9r51wkw9WEvbOI5hCr49EJYSjwEwCC4-WSwdA989w5noZ2PMjY"
         run: |
@@ -17,40 +17,27 @@ jobs:
           payload=$(jq '
             (.commits | length) as $n
             | (.ref | sub("refs/heads/"; "")) as $branch
-            | ([.commits[] | (.added // [])[]]    | unique | length) as $add
-            | ([.commits[] | (.modified // [])[]] | unique | length) as $mod
-            | ([.commits[] | (.removed // [])[]]  | unique | length) as $rem
-            | (if $n == 1 then "nuovo commit" else "nuovi commit" end) as $label
+            | ([.commits[] | ((.added // []) + (.modified // []) + (.removed // []))[]] | unique | length) as $files
             | {
                 username: "GitHub",
                 avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
                 embeds: [{
                   author: {
-                    name: "\(.sender.login) ha pushato su \($branch)",
+                    name: .sender.login,
                     icon_url: .sender.avatar_url,
                     url: .sender.html_url
                   },
-                  title: "📦 \(.repository.name) · \($n) \($label)",
+                  title: "\(.repository.name) · \($branch)",
                   url: .compare,
-                  thumbnail: { url: .repository.owner.avatar_url },
                   description: (
                     .commits[:10]
-                    | map(
-                        "[`\(.id[:7])`](\(.url)) **\(.message | split("\n")[0])**\n"
-                        + "> ➕ \((.added // []) | length)  ✏️ \((.modified // []) | length)  🗑️ \((.removed // []) | length)  ·  👤 \(.author.name)"
-                      )
-                    | join("\n\n")
-                    | .[:3800]
+                    | map("[`\(.id[:7])`](\(.url)) \(.message | split("\n")[0])")
+                    | join("\n")
+                    | .[:3900]
                   ),
                   color: (if $branch == "main" then 5763719 else 16753920 end),
-                  fields: [
-                    { name: "🌿 Branch", value: "`\($branch)`", inline: true },
-                    { name: "📝 File", value: "➕ \($add)  ✏️ \($mod)  🗑️ \($rem)", inline: true },
-                    { name: "🔗 Modifiche", value: "[Apri confronto](\(.compare))", inline: true }
-                  ],
                   footer: {
-                    text: (if $n > 10 then "Mostrati 10 commit su \($n) · " else "" end) + "ETA Games · \(.repository.full_name)",
-                    icon_url: .repository.owner.avatar_url
+                    text: "\($n) \(if $n == 1 then "commit" else "commit" end) · \($files) file modificati"
                   },
                   timestamp: .head_commit.timestamp
                 }]
