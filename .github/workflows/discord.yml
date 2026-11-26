@@ -1,0 +1,47 @@
+name: Notifica Discord
+
+on:
+  push:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invia embed su Discord
+        env:
+          WEBHOOK: "https://discord.com/api/webhooks/1575516985444401324/vV6UnADmBiJhw192fQ9r51wkw9WEvbOI5hCr49EJYSjwEwCC4-WSwdA989w5noZ2PMjY"
+        run: |
+          N=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
+          if [ "$N" -eq 0 ]; then exit 0; fi
+
+          payload=$(jq '
+            (.commits | length) as $n
+            | {
+                username: "GitHub",
+                avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+                embeds: [{
+                  author: {
+                    name: .sender.login,
+                    icon_url: .sender.avatar_url,
+                    url: .sender.html_url
+                  },
+                  title: (if $n == 1 then "1 nuovo commit" else "\($n) nuovi commit" end)
+                         + " su \(.repository.name)",
+                  url: .compare,
+                  description: (
+                    .commits[:10]
+                    | map("[`\(.id[:7])`](\(.url)) \(.message | split("\n")[0]) — *\(.author.name)*")
+                    | join("\n")
+                    | .[:3900]
+                  ),
+                  color: 5793266,
+                  fields: [
+                    {name: "Branch", value: "`\(.ref | sub("refs/heads/"; ""))`", inline: true},
+                    {name: "Repository", value: "[\(.repository.full_name)](\(.repository.html_url))", inline: true}
+                  ],
+                  footer: {text: (if $n > 10 then "Mostrati 10 commit su \($n)" else "ETA Games" end)},
+                  timestamp: .head_commit.timestamp
+                }]
+              }' "$GITHUB_EVENT_PATH")
+
+          curl -sS -H "Content-Type: application/json" -d "$payload" "$WEBHOOK"
