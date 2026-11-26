@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Invia messaggio su Discord
         env:
-          WEBHOOK: "INCOLLA_QUI"
+          WEBHOOK: "https://discord.com/api/webhooks/1575516985444401324/vV6UnADmBiJhw192fQ9r51wkw9WEvbOI5hCr49EJYSjwEwCC4-WSwdA989w5noZ2PMjY"
         run: |
           N=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
           if [ "$N" -eq 0 ]; then exit 0; fi
