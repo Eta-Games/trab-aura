@@ -16,32 +16,44 @@ jobs:
 
           payload=$(jq '
             (.commits | length) as $n
+            | (.ref | sub("refs/heads/"; "")) as $branch
+            | ([.commits[] | (.added // [])[]]    | unique | length) as $add
+            | ([.commits[] | (.modified // [])[]] | unique | length) as $mod
+            | ([.commits[] | (.removed // [])[]]  | unique | length) as $rem
+            | (if $n == 1 then "nuovo commit" else "nuovi commit" end) as $label
             | {
                 username: "GitHub",
                 avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
                 embeds: [{
                   author: {
-                    name: .sender.login,
+                    name: "\(.sender.login) ha pushato su \($branch)",
                     icon_url: .sender.avatar_url,
                     url: .sender.html_url
                   },
-                  title: (if $n == 1 then "1 nuovo commit" else "\($n) nuovi commit" end)
-                         + " su \(.repository.name)",
+                  title: "📦 \(.repository.name) · \($n) \($label)",
                   url: .compare,
+                  thumbnail: { url: .repository.owner.avatar_url },
                   description: (
                     .commits[:10]
-                    | map("[`\(.id[:7])`](\(.url)) \(.message | split("\n")[0]) — *\(.author.name)*")
-                    | join("\n")
-                    | .[:3900]
+                    | map(
+                        "[`\(.id[:7])`](\(.url)) **\(.message | split("\n")[0])**\n"
+                        + "> ➕ \((.added // []) | length)  ✏️ \((.modified // []) | length)  🗑️ \((.removed // []) | length)  ·  👤 \(.author.name)"
+                      )
+                    | join("\n\n")
+                    | .[:3800]
                   ),
-                  color: 5793266,
+                  color: (if $branch == "main" then 5763719 else 16753920 end),
                   fields: [
-                    {name: "Branch", value: "`\(.ref | sub("refs/heads/"; ""))`", inline: true},
-                    {name: "Repository", value: "[\(.repository.full_name)](\(.repository.html_url))", inline: true}
+                    { name: "🌿 Branch", value: "`\($branch)`", inline: true },
+                    { name: "📝 File", value: "➕ \($add)  ✏️ \($mod)  🗑️ \($rem)", inline: true },
+                    { name: "🔗 Modifiche", value: "[Apri confronto](\(.compare))", inline: true }
                   ],
-                  footer: {text: (if $n > 10 then "Mostrati 10 commit su \($n)" else "ETA Games" end)},
+                  footer: {
+                    text: (if $n > 10 then "Mostrati 10 commit su \($n) · " else "" end) + "ETA Games · \(.repository.full_name)",
+                    icon_url: .repository.owner.avatar_url
+                  },
                   timestamp: .head_commit.timestamp
                 }]
               }' "$GITHUB_EVENT_PATH")
 
-          curl -sS -H "Content-Type: application/json" -d "$payload" "$WEBHOOK"
+          curl -sS -w "\nHTTP %{http_code}\n" -H "Content-Type: application/json" -d "$payload" "$WEBHOOK"
