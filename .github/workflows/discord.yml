@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Invia messaggio su Discord
         env:
-          WEBHOOK: "https://discord.com/api/webhooks/1575516985444401324/vV6UnADmBiJhw192fQ9r51wkw9WEvbOI5hCr49EJYSjwEwCC4-WSwdA989w5noZ2PMjY"
+          WEBHOOK: "INCOLLA_QUI"
         run: |
           N=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
           if [ "$N" -eq 0 ]; then exit 0; fi
@@ -17,27 +17,36 @@ jobs:
           payload=$(jq '
             (.commits | length) as $n
             | (.ref | sub("refs/heads/"; "")) as $branch
-            | ([.commits[] | ((.added // []) + (.modified // []) + (.removed // []))[]] | unique | length) as $files
+            | ([.commits[] | (.added // [])[]]    | unique | length) as $add
+            | ([.commits[] | (.modified // [])[]] | unique | length) as $mod
+            | ([.commits[] | (.removed // [])[]]  | unique | length) as $rem
             | {
                 username: "GitHub",
                 avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
                 embeds: [{
                   author: {
-                    name: .sender.login,
+                    name: "\(.sender.login) ha pushato su \($branch)",
                     icon_url: .sender.avatar_url,
                     url: .sender.html_url
                   },
-                  title: "\(.repository.name) · \($branch)",
+                  title: "\(.repository.name) · \($n) \(if $n == 1 then "nuovo commit" else "nuovi commit" end)",
                   url: .compare,
+                  thumbnail: { url: .repository.owner.avatar_url },
                   description: (
                     .commits[:10]
-                    | map("[`\(.id[:7])`](\(.url)) \(.message | split("\n")[0])")
+                    | map("[`\(.id[:7])`](\(.url)) **\(.message | split("\n")[0])**")
                     | join("\n")
                     | .[:3900]
                   ),
                   color: (if $branch == "main" then 5763719 else 16753920 end),
+                  fields: [
+                    { name: "Repository", value: "[\(.repository.full_name)](\(.repository.html_url))", inline: true },
+                    { name: "Branch", value: "`\($branch)`", inline: true },
+                    { name: "File", value: "Aggiunti: \($add)\nModificati: \($mod)\nEliminati: \($rem)", inline: true }
+                  ],
                   footer: {
-                    text: "\($n) \(if $n == 1 then "commit" else "commit" end) · \($files) file modificati"
+                    text: "ETA Games",
+                    icon_url: .repository.owner.avatar_url
                   },
                   timestamp: .head_commit.timestamp
                 }]
